@@ -78,6 +78,14 @@ app.post("/api/otp/verify", async (req, res) => {
 app.get("/api/health", (_, res) => res.json({ ok: true, service: "farmanza-otp" }));
 
 
+// Allow browser apps (Netlify) to call this API
+app.use((req, res, next) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
 const PL_AUTH = "Basic " + Buffer.from(PL_KEY + ":").toString("base64");
@@ -87,14 +95,14 @@ app.get("/planet/latest", async (req, res) => {
   try {
     if (!PL_KEY) return res.status(500).json({ error: "PLANET_API_KEY not set" });
     const lat = parseFloat(req.query.lat), lng = parseFloat(req.query.lng);
-    const start = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+    const start = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
     const body = {
       item_types: ["PSScene"],
       filter: { type: "AndFilter", config: [
         { type: "GeometryFilter", field_name: "geometry",
           config: { type: "Point", coordinates: [lng, lat] } },
         { type: "DateRangeFilter", field_name: "acquired", config: { gte: start } },
-        { type: "RangeFilter", field_name: "cloud_cover", config: { lte: 0.2 } },
+        { type: "RangeFilter", field_name: "cloud_cover", config: { lte: 0.5 } },
       ]},
     };
     const r = await fetch("https://api.planet.com/data/v1/quick-search?_sort=acquired desc", {
