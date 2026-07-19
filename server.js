@@ -12,13 +12,7 @@ const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-    cb(new Error("CORS blocked: " + origin));
-  },
-  methods: ["GET", "POST"],
-}));
+app.use(cors());
 
 let client = null;
 try {
