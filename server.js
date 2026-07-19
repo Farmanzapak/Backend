@@ -87,14 +87,14 @@ app.get("/planet/latest", async (req, res) => {
   try {
     if (!PL_KEY) return res.status(500).json({ error: "PLANET_API_KEY not set" });
     const lat = parseFloat(req.query.lat), lng = parseFloat(req.query.lng);
-    const start = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+    const start = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
     const body = {
       item_types: ["PSScene"],
       filter: { type: "AndFilter", config: [
         { type: "GeometryFilter", field_name: "geometry",
           config: { type: "Point", coordinates: [lng, lat] } },
         { type: "DateRangeFilter", field_name: "acquired", config: { gte: start } },
-        { type: "RangeFilter", field_name: "cloud_cover", config: { lte: 0.2 } },
+        { type: "RangeFilter", field_name: "cloud_cover", config: { lte: 0.5 } },
       ]},
     };
     const r = await fetch("https://api.planet.com/data/v1/quick-search?_sort=acquired desc", {
