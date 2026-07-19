@@ -116,6 +116,19 @@ app.get("/planet/latest", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Proxy monthly-basemap tiles (fallback entitlement test)
+app.get("/planet/btile/:z/:x/:y", async (req, res) => {
+  try {
+    const d = new Date(); d.setMonth(d.getMonth() - 1);
+    const m = "global_monthly_" + d.getFullYear() + "_" + String(d.getMonth()+1).padStart(2,"0") + "_mosaic";
+    const { z, x, y } = req.params;
+    const r = await fetch("https://tiles.planet.com/basemaps/v1/planet-tiles/" + m + "/gmap/" + z + "/" + x + "/" + y + ".png?api_key=" + PL_KEY);
+    if (!r.ok) return res.status(r.status).end();
+    res.set({ "Content-Type": "image/png", "Access-Control-Allow-Origin": "*" });
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) { res.status(500).end(); }
+});
+
 // Proxy scene tiles (key stays server-side); CORS open for canvas reads
 app.get("/planet/tile/:id/:z/:x/:y", async (req, res) => {
   try {
