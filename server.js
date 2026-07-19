@@ -116,6 +116,23 @@ app.get("/planet/latest", async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Sentinel-2 latest cloud-free tile (last 30 days) via Sentinel Hub WMS
+const S2_KEY = process.env.SENTINEL_API_KEY || process.env.PLANET_API_KEY || "";
+app.get("/s2/tile/:z/:x/:y", async (req, res) => {
+  try {
+    if (!S2_KEY) return res.status(500).json({ error: "SENTINEL_API_KEY not set" });
+    const z=+req.params.z, x=+req.params.x, y=+req.params.y;
+    const W=20037508.342789244, t=(2*W)/Math.pow(2,z);
+    const minx=-W+x*t, maxx=minx+t, maxy=W-y*t, miny=maxy-t;
+    const to=new Date().toISOString(), from=new Date(Date.now()-30*864e5).toISOString();
+    const body={input:{bounds:{bbox:[minx,miny,maxx,maxy],properties:{crs:"http://www.opengis.net/def/crs/EPSG/0/3857"}},data:[{type:"sentinel-2-l2a",dataFilter:{timeRange:{from,to},maxCloudCoverage:20,mosaickingOrder:"mostRecent"}}]},output:{width:512,height:512,responses:[{identifier:"default",format:{type:"image/jpeg"}}]},evalscript:"//VERSION=3\nfunction setup(){return{input:[\"B02\",\"B03\",\"B04\"],output:{bands:3}}}\nfunction evaluatePixel(s){return[2.5*s.B04,2.5*s.B03,2.5*s.B02]}"};
+    const r=await fetch("https://services.sentinel-hub.com/api/v1/process",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+S2_KEY},body:JSON.stringify(body)});
+    if(!r.ok){const e=await r.text();console.log("s2:",r.status,e.slice(0,200));return res.status(r.status).end();}
+    res.set({"Content-Type":"image/jpeg","Access-Control-Allow-Origin":"*","Cache-Control":"public, max-age=3600"});
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch(e){ console.log("s2 err:",e.message); res.status(500).end(); }
+});
+
 // Proxy monthly-basemap tiles (fallback entitlement test)
 app.get("/planet/btile/:z/:x/:y", async (req, res) => {
   try {
