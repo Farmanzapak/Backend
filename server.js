@@ -20,10 +20,14 @@ app.use(cors({
   methods: ["GET", "POST"],
 }));
 
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+let client = null;
+try {
+  if ((process.env.TWILIO_ACCOUNT_SID || "").startsWith("AC")) {
+    client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+  } else {
+    console.log("⚠️ Twilio not configured — OTP endpoints disabled, Planet proxy still active");
+  }
+} catch (e) { console.log("⚠️ Twilio init failed:", e.message); }
 const VERIFY_SID = process.env.TWILIO_VERIFY_SERVICE_SID;
 
 function toE164(raw) {
@@ -130,6 +134,9 @@ app.get("/planet/tile/:id/:z/:x/:y", async (req, res) => {
     res.send(buf);
   } catch (e) { res.status(500).end(); }
 });
+
+process.on("uncaughtException", e => console.error("uncaught:", e.message));
+process.on("unhandledRejection", e => console.error("unhandled:", e));
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log("✅ Farmanza OTP backend running on http://localhost:" + PORT));
