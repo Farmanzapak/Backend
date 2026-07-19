@@ -117,16 +117,28 @@ app.get("/planet/latest", async (req, res) => {
 });
 
 // Sentinel-2 latest cloud-free tile (last 30 days) via Sentinel Hub WMS
-const S2_KEY = process.env.SENTINEL_API_KEY || process.env.PLANET_API_KEY || "";
+let s2Tok=null, s2Exp=0;
+async function s2Token(){
+  if (s2Tok && Date.now() < s2Exp) return s2Tok;
+  const r = await fetch("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token",{
+    method:"POST", headers:{"Content-Type":"application/x-www-form-urlencoded"},
+    body:"grant_type=client_credentials&client_id="+encodeURIComponent(process.env.S2_CLIENT_ID||"")+"&client_secret="+encodeURIComponent(process.env.S2_CLIENT_SECRET||"")
+  });
+  const d = await r.json();
+  if (!d.access_token) { console.log("s2 auth:", JSON.stringify(d).slice(0,200)); return null; }
+  s2Tok = d.access_token; s2Exp = Date.now() + (d.expires_in - 60) * 1000;
+  return s2Tok;
+}
 app.get("/s2/tile/:z/:x/:y", async (req, res) => {
   try {
-    if (!S2_KEY) return res.status(500).json({ error: "SENTINEL_API_KEY not set" });
+    const tok = await s2Token();
+    if (!tok) return res.status(500).json({ error: "S2 OAuth failed — set S2_CLIENT_ID / S2_CLIENT_SECRET" });
     const z=+req.params.z, x=+req.params.x, y=+req.params.y;
     const W=20037508.342789244, t=(2*W)/Math.pow(2,z);
     const minx=-W+x*t, maxx=minx+t, maxy=W-y*t, miny=maxy-t;
     const to=new Date().toISOString(), from=new Date(Date.now()-30*864e5).toISOString();
     const body={input:{bounds:{bbox:[minx,miny,maxx,maxy],properties:{crs:"http://www.opengis.net/def/crs/EPSG/0/3857"}},data:[{type:"sentinel-2-l2a",dataFilter:{timeRange:{from,to},maxCloudCoverage:20,mosaickingOrder:"mostRecent"}}]},output:{width:512,height:512,responses:[{identifier:"default",format:{type:"image/jpeg"}}]},evalscript:"//VERSION=3\nfunction setup(){return{input:[\"B02\",\"B03\",\"B04\"],output:{bands:3}}}\nfunction evaluatePixel(s){return[2.5*s.B04,2.5*s.B03,2.5*s.B02]}"};
-    const r=await fetch("https://services.sentinel-hub.com/api/v1/process",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+S2_KEY},body:JSON.stringify(body)});
+    const r=await fetch("https://services.sentinel-hub.com/api/v1/process",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+tok},body:JSON.stringify(body)});
     if(!r.ok){const e=await r.text();console.log("s2:",r.status,e.slice(0,200));return res.status(r.status).end();}
     res.set({"Content-Type":"image/jpeg","Access-Control-Allow-Origin":"*","Cache-Control":"public, max-age=3600"});
     res.send(Buffer.from(await r.arrayBuffer()));
