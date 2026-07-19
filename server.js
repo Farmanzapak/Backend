@@ -78,6 +78,14 @@ app.post("/api/otp/verify", async (req, res) => {
 app.get("/api/health", (_, res) => res.json({ ok: true, service: "farmanza-otp" }));
 
 
+// Allow browser apps (Netlify) to call this API
+app.use((req, res, next) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
 const PL_AUTH = "Basic " + Buffer.from(PL_KEY + ":").toString("base64");
