@@ -84,6 +84,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Cross-device store (attach a Railway Volume at /data for permanence) ─────
+const fs = require("fs");
+const DATA_FILE = (process.env.DATA_DIR || "/data") + "/farmanza.json";
+try { fs.mkdirSync(process.env.DATA_DIR || "/data", { recursive: true }); } catch {}
+app.use(express.json({ limit: "5mb" }));
+app.get("/store", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(DATA_FILE, "utf8"))); }
+  catch { res.json({}); }
+});
+app.post("/store", (req, res) => {
+  try { fs.writeFileSync(DATA_FILE, JSON.stringify(req.body || {})); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
 const PL_AUTH = "Basic " + Buffer.from(PL_KEY + ":").toString("base64");
