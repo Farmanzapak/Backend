@@ -98,6 +98,37 @@ app.post("/store", (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Per-farmer consultation chat storage (isolated per account, not the shared /store blob) ──
+const CHATS_DIR = (process.env.DATA_DIR || "/data") + "/chats";
+try { fs.mkdirSync(CHATS_DIR, { recursive: true }); } catch {}
+function chatFile(phone) {
+  const safe = String(phone || "unknown").replace(/[^0-9A-Za-z+_-]/g, "_");
+  return CHATS_DIR + "/" + safe + ".json";
+}
+// A farmer's own device fetches ONLY its own thread — never anyone else's
+app.get("/chat/:phone", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(chatFile(req.params.phone), "utf8"))); }
+  catch { res.json({ history: [] }); }
+});
+app.post("/chat/:phone", (req, res) => {
+  try { fs.writeFileSync(chatFile(req.params.phone), JSON.stringify({ history: req.body.history || [], updatedAt: Date.now() })); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+// Admin-only: aggregate view of every farmer's consultation activity
+app.get("/chats-all", (req, res) => {
+  try {
+    const files = fs.readdirSync(CHATS_DIR).filter(f => f.endsWith(".json"));
+    const out = {};
+    for (const f of files) {
+      try {
+        const d = JSON.parse(fs.readFileSync(CHATS_DIR + "/" + f, "utf8"));
+        out[f.replace(/\.json$/, "")] = { history: d.history || [], updatedAt: d.updatedAt || 0 };
+      } catch {}
+    }
+    res.json(out);
+  } catch (e) { res.json({}); }
+});
+
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
 const PL_AUTH = "Basic " + Buffer.from(PL_KEY + ":").toString("base64");
