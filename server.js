@@ -102,7 +102,7 @@ app.post("/store", (req, res) => {
 const CHATS_DIR = (process.env.DATA_DIR || "/data") + "/chats";
 try { fs.mkdirSync(CHATS_DIR, { recursive: true }); } catch {}
 function chatFile(phone) {
-  const safe = String(phone || "unknown").replace(/[^0-9A-Za-z+_-]/g, "_");
+  const safe = String(phone || "unknown").replace(/\D/g, "") || "unknown";
   return CHATS_DIR + "/" + safe + ".json";
 }
 // A farmer's own device fetches ONLY its own thread — never anyone else's
