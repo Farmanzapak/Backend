@@ -128,6 +128,28 @@ app.get("/chats-all", (req, res) => {
     res.json(out);
   } catch (e) { res.json({}); }
 });
+// ── AI identification reference library (admin-curated, boosts photo ID accuracy) ──
+const REFLIB_FILE = (process.env.DATA_DIR || "/data") + "/reflib.json";
+app.get("/reflib", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(REFLIB_FILE, "utf8"))); }
+  catch { res.json([]); }
+});
+app.post("/reflib", (req, res) => {
+  try { fs.writeFileSync(REFLIB_FILE, JSON.stringify(req.body || [])); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Correction memory: wrong-answer/right-answer pairs, remembered for future queries ──
+const CORRECTIONS_FILE = (process.env.DATA_DIR || "/data") + "/corrections.json";
+app.get("/corrections", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(CORRECTIONS_FILE, "utf8"))); }
+  catch { res.json([]); }
+});
+app.post("/corrections", (req, res) => {
+  try { fs.writeFileSync(CORRECTIONS_FILE, JSON.stringify(req.body || [])); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
