@@ -150,6 +150,29 @@ app.post("/corrections", (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Append-only endpoints — avoid the client-side race where an incomplete local copy
+// could overwrite and wipe out other data already saved on the server.
+app.post("/corrections/add", (req, res) => {
+  try {
+    let arr = [];
+    try { arr = JSON.parse(fs.readFileSync(CORRECTIONS_FILE, "utf8")); } catch {}
+    if (!Array.isArray(arr)) arr = [];
+    arr.push(req.body);
+    fs.writeFileSync(CORRECTIONS_FILE, JSON.stringify(arr));
+    res.json({ ok: true, corrections: arr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/reflib/add", (req, res) => {
+  try {
+    let arr = [];
+    try { arr = JSON.parse(fs.readFileSync(REFLIB_FILE, "utf8")); } catch {}
+    if (!Array.isArray(arr)) arr = [];
+    arr.push(req.body);
+    fs.writeFileSync(REFLIB_FILE, JSON.stringify(arr));
+    res.json({ ok: true, reflib: arr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
