@@ -4,7 +4,7 @@ const cors    = require("cors");
 const twilio  = require("twilio");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // covers base64 photos in corrections/reflib payloads
 
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
@@ -88,7 +88,6 @@ app.use((req, res, next) => {
 const fs = require("fs");
 const DATA_FILE = (process.env.DATA_DIR || "/data") + "/farmanza.json";
 try { fs.mkdirSync(process.env.DATA_DIR || "/data", { recursive: true }); } catch {}
-app.use(express.json({ limit: "5mb" }));
 app.get("/store", (req, res) => {
   try { res.json(JSON.parse(fs.readFileSync(DATA_FILE, "utf8"))); }
   catch { res.json({}); }
