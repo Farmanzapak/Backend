@@ -128,6 +128,72 @@ app.get("/chats-all", (req, res) => {
     res.json(out);
   } catch (e) { res.json({}); }
 });
+// ── Specialized plant/tree/crop identification (PlantNet) — a purpose-built botanical
+// classifier trained on millions of labeled species photos, far more accurate for narrow
+// species ID than any general-purpose chatbot vision. Used as a first-pass grounding signal,
+// with Claude then writing the full contextual Urdu advisory on top of these candidates. ──
+const PLANTNET_KEY = process.env.PLANTNET_API_KEY || "";
+app.post("/plantid", async (req, res) => {
+  try {
+    if (!PLANTNET_KEY) return res.status(500).json({ error: "PLANTNET_API_KEY not set" });
+    const { image } = req.body;
+    if (!image) return res.status(400).json({ error: "no image" });
+    const buf = Buffer.from(image, "base64");
+    const blob = new Blob([buf], { type: "image/jpeg" });
+    const form = new FormData();
+    form.append("images", blob, "photo.jpg");
+    form.append("organs", "auto");
+    const url = "https://my-api.plantnet.org/v2/identify/all?api-key=" + PLANTNET_KEY;
+    const r = await fetch(url, { method: "POST", body: form });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      console.log("plantnet:", r.status, t.slice(0, 200));
+      return res.status(r.status).json({ error: "plantnet " + r.status });
+    }
+    const d = await r.json();
+    const top = (d.results || []).slice(0, 3).map(x => ({
+      sci: x.species && x.species.scientificNameWithoutAuthor || "",
+      common: (x.species && x.species.commonNames && x.species.commonNames[0]) || "",
+      score: Math.round((x.score || 0) * 100),
+    }));
+    res.json({ results: top });
+  } catch (e) { console.log("plantid err:", e.message); res.status(500).json({ error: e.message }); }
+});
+// ── iNaturalist computer vision — free, no API key, covers plants AND animals/insects
+// (pests!). Community-verified global biodiversity database — a second independent
+// specialized classifier that Claude can reconcile against PlantNet's results. ──
+app.post("/inatid", async (req, res) => {
+  try {
+    const { image, lat, lng } = req.body;
+    if (!image) return res.status(400).json({ error: "no image" });
+    const buf = Buffer.from(image, "base64");
+    const blob = new Blob([buf], { type: "image/jpeg" });
+    const form = new FormData();
+    form.append("image", blob, "photo.jpg");
+    if (lat) form.append("lat", String(lat));
+    if (lng) form.append("lng", String(lng));
+    const r = await fetch("https://api.inaturalist.org/v1/computervision/score_image", {
+      method: "POST",
+      body: form,
+      headers: { "User-Agent": "Farmanza-Agri-App/1.0 (Pakistani farming platform)" },
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      console.log("inat:", r.status, t.slice(0, 200));
+      return res.status(r.status).json({ error: "inaturalist " + r.status });
+    }
+    const d = await r.json();
+    const top = (d.results || []).slice(0, 3).map(x => ({
+      sci: (x.taxon && x.taxon.name) || "",
+      common: (x.taxon && x.taxon.preferred_common_name) || "",
+      rank: (x.taxon && x.taxon.rank) || "",
+      score: Math.round(x.combined_score != null ? x.combined_score : (x.vision_score || 0)),
+    }));
+    res.json({ results: top });
+  } catch (e) { console.log("inatid err:", e.message); res.status(500).json({ error: e.message }); }
+});
+
+
 // ── AI identification reference library (admin-curated, boosts photo ID accuracy) ──
 const REFLIB_FILE = (process.env.DATA_DIR || "/data") + "/reflib.json";
 app.get("/reflib", (req, res) => {
@@ -263,6 +329,38 @@ app.get("/planet/tile/:id/:z/:x/:y", async (req, res) => {
 
 process.on("uncaughtException", e => console.error("uncaught:", e.message));
 process.on("unhandledRejection", e => console.error("unhandled:", e));
+
+// ── Pakistan registered-pesticide registry (Dept. of Plant Protection, Form-1/16/17,
+// data updated 30/01/2025) — real regulatory data, loaded once at startup. Used to verify
+// any chemical Claude recommends against the actual official list before showing it to a farmer. ──
+let PESTICIDE_REGISTRY = [];
+try {
+  PESTICIDE_REGISTRY = JSON.parse(fs.readFileSync(__dirname + "/pesticide_registry.json", "utf8"));
+  console.log("✅ Pesticide registry loaded:", PESTICIDE_REGISTRY.length, "entries");
+} catch (e) { console.log("⚠️ pesticide registry not loaded:", e.message); }
+
+app.get("/pesticide-check", (req, res) => {
+  const q = String(req.query.q || "").trim().toLowerCase();
+  if (!q || q.length < 3) return res.json({ matches: [] });
+  const matches = PESTICIDE_REGISTRY.filter(r => (r.product || "").toLowerCase().includes(q)).slice(0, 5);
+  res.json({ matches });
+});
+// ── Notified generic formulations (S.R.O. 636(I)/2005) — includes WHO acute toxicity
+// hazard class (I=extremely hazardous ... IV=unlikely), genuinely valuable safety data
+// the main registry above doesn't carry. Second, complementary verification layer. ──
+let NOTIFIED_LIST = [];
+try {
+  NOTIFIED_LIST = JSON.parse(fs.readFileSync(__dirname + "/notified_classified.json", "utf8"));
+  console.log("✅ Notified/WHO-class list loaded:", NOTIFIED_LIST.length, "entries");
+} catch (e) { console.log("⚠️ notified list not loaded:", e.message); }
+
+app.get("/pesticide-notified-check", (req, res) => {
+  const q = String(req.query.q || "").trim().toLowerCase();
+  if (!q || q.length < 3) return res.json({ matches: [] });
+  const matches = NOTIFIED_LIST.filter(r => (r.product || "").toLowerCase().includes(q)).slice(0, 3);
+  res.json({ matches });
+});
+
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log("✅ Farmanza OTP backend running on http://localhost:" + PORT));
