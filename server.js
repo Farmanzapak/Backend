@@ -359,6 +359,82 @@ app.get("/pesticide-notified-check", (req, res) => {
   const matches = NOTIFIED_LIST.filter(r => (r.product || "").toLowerCase().includes(q)).slice(0, 3);
   res.json({ matches });
 });
+// ── Approved veterinary drugs registry (DRAP) — infrastructure ready, empty until real
+// data is imported. DRAP has no clean bulk-downloadable "approved" list like DPP does;
+// only a search-only tool DRAP itself disclaims for reference use. Entries can be added
+// here manually (cross-checked one at a time) or via a future bulk import. ──
+const VETDRUGS_FILE = (process.env.DATA_DIR || "/data") + "/vet_drugs.json";
+app.get("/vet-drugs", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(VETDRUGS_FILE, "utf8"))); }
+  catch { res.json([]); }
+});
+app.post("/vet-drugs", (req, res) => {
+  try { fs.writeFileSync(VETDRUGS_FILE, JSON.stringify(req.body || [])); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/vet-drugs/add", (req, res) => {
+  try {
+    let arr = [];
+    try { arr = JSON.parse(fs.readFileSync(VETDRUGS_FILE, "utf8")); } catch {}
+    if (!Array.isArray(arr)) arr = [];
+    arr.push(req.body);
+    fs.writeFileSync(VETDRUGS_FILE, JSON.stringify(arr));
+    res.json({ ok: true, drugs: arr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get("/vet-drug-check", (req, res) => {
+  const q = String(req.query.q || "").trim().toLowerCase();
+  if (!q || q.length < 3) return res.json({ matches: [] });
+  let arr = [];
+  try { arr = JSON.parse(fs.readFileSync(VETDRUGS_FILE, "utf8")); } catch {}
+  const matches = arr.filter(r => (r.name || "").toLowerCase().includes(q)).slice(0, 5);
+  res.json({ matches });
+});
+
+// ── Central suppliers (Farmanza's own negotiated/discounted deals) — distinct from the
+// peer-to-peer marketplace. Admin-curated. AI recommendations check this catalog first,
+// enabling a one-tap order flow instead of the multi-company quote-collection process. ──
+const CENTRAL_FILE = (process.env.DATA_DIR || "/data") + "/central_suppliers.json";
+const CENTRAL_ORDERS_FILE = (process.env.DATA_DIR || "/data") + "/central_orders.json";
+
+app.get("/central-suppliers", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(CENTRAL_FILE, "utf8"))); }
+  catch { res.json([]); }
+});
+app.post("/central-suppliers", (req, res) => {
+  try { fs.writeFileSync(CENTRAL_FILE, JSON.stringify(req.body || [])); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/central-suppliers/add", (req, res) => {
+  try {
+    let arr = [];
+    try { arr = JSON.parse(fs.readFileSync(CENTRAL_FILE, "utf8")); } catch {}
+    if (!Array.isArray(arr)) arr = [];
+    arr.push(req.body);
+    fs.writeFileSync(CENTRAL_FILE, JSON.stringify(arr));
+    res.json({ ok: true, suppliers: arr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get("/central-orders", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(CENTRAL_ORDERS_FILE, "utf8"))); }
+  catch { res.json([]); }
+});
+app.post("/central-orders", (req, res) => {
+  try { fs.writeFileSync(CENTRAL_ORDERS_FILE, JSON.stringify(req.body || [])); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/central-orders/add", (req, res) => {
+  try {
+    let arr = [];
+    try { arr = JSON.parse(fs.readFileSync(CENTRAL_ORDERS_FILE, "utf8")); } catch {}
+    if (!Array.isArray(arr)) arr = [];
+    arr.push(req.body);
+    fs.writeFileSync(CENTRAL_ORDERS_FILE, JSON.stringify(arr));
+    res.json({ ok: true, orders: arr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 
 const PORT = process.env.PORT || 4000;
