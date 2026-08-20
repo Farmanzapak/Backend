@@ -93,9 +93,54 @@ app.get("/store", (req, res) => {
   catch { res.json({}); }
 });
 app.post("/store", (req, res) => {
-  try { fs.writeFileSync(DATA_FILE, JSON.stringify(req.body || {})); res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  // Merge (not overwrite) — the frontend now sends only the marketplace-listing keys
+  // (stores/marketDemands/medOrders) here; farmers/buyers/lands go through their own
+  // atomic /upsert /delete routes below and must never be wiped by this endpoint.
+  try {
+    const current = (() => { try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); } catch { return {}; } })();
+    const merged = { ...current, ...(req.body || {}) };
+    fs.writeFileSync(DATA_FILE, JSON.stringify(merged));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Atomic per-record operations for farmers/buyers/lands — fixes a real bug where
+// deleting/editing a record could get silently resurrected: the old approach had every
+// device push its own full (possibly stale) copy of these arrays on any unrelated change,
+// so one device's stale snapshot could overwrite another device's deletion moments later.
+// These endpoints instead read the current file fresh, touch only ONE record, write back —
+// no client ever overwrites data it hasn't itself just read. ──
+function readStore() { try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); } catch { return {}; } }
+function writeStore(obj) { fs.writeFileSync(DATA_FILE, JSON.stringify(obj)); }
+
+function makeRecordRoutes(key) {
+  app.post("/" + key + "/upsert", (req, res) => {
+    try {
+      const store = readStore();
+      let arr = Array.isArray(store[key]) ? store[key] : [];
+      const rec = req.body;
+      const idx = arr.findIndex(x => x.id === rec.id);
+      if (idx >= 0) arr[idx] = rec; else arr.push(rec);
+      store[key] = arr;
+      writeStore(store);
+      res.json({ ok: true, [key]: arr });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post("/" + key + "/delete", (req, res) => {
+    try {
+      const store = readStore();
+      let arr = Array.isArray(store[key]) ? store[key] : [];
+      arr = arr.filter(x => x.id !== req.body.id);
+      store[key] = arr;
+      writeStore(store);
+      res.json({ ok: true, [key]: arr });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+}
+makeRecordRoutes("farmers");
+makeRecordRoutes("buyers");
+makeRecordRoutes("lands");
+
 
 // ── Per-farmer consultation chat storage (isolated per account, not the shared /store blob) ──
 const CHATS_DIR = (process.env.DATA_DIR || "/data") + "/chats";
