@@ -111,6 +111,36 @@ app.post("/store", (req, res) => {
 // These endpoints instead read the current file fresh, touch only ONE record, write back —
 // no client ever overwrites data it hasn't itself just read. ──
 function readStore() { try { return JSON.parse(fs.readFileSync(DATA_FILE, "utf8")); } catch { return {}; } }
+
+// ── Storage health check — writes+reads a test file right now and reports real counts,
+// so persistence can be verified with one click instead of a manual redeploy-and-compare
+// dance every time. If "writable" is false or counts unexpectedly drop to 0 after a
+// redeploy, the Railway Volume is not actually persisting data. ──
+app.get("/health", (req, res) => {
+  const dir = process.env.DATA_DIR || "/data";
+  const testFile = dir + "/_health_check.json";
+  try {
+    const now = Date.now();
+    fs.writeFileSync(testFile, JSON.stringify({ lastCheck: now }));
+    const readBack = JSON.parse(fs.readFileSync(testFile, "utf8"));
+    let chatCount = 0;
+    try { chatCount = fs.readdirSync(CHATS_DIR).filter(f => f.endsWith(".json")).length; } catch {}
+    let farmerCount = 0, buyerCount = 0, landCount = 0;
+    try { const st = readStore(); farmerCount = (st.farmers || []).length; buyerCount = (st.buyers || []).length; landCount = (st.lands || []).length; } catch {}
+    res.json({
+      ok: true,
+      writable: readBack.lastCheck === now,
+      dataDir: dir,
+      chatFiles: chatCount,
+      farmerRecords: farmerCount,
+      buyerRecords: buyerCount,
+      landRecords: landCount,
+      checkedAt: new Date(now).toISOString(),
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, writable: false, error: e.message });
+  }
+});
 function writeStore(obj) { fs.writeFileSync(DATA_FILE, JSON.stringify(obj)); }
 
 function makeRecordRoutes(key) {
