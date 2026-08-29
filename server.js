@@ -188,6 +188,20 @@ app.post("/chat/:phone", (req, res) => {
   try { fs.writeFileSync(chatFile(req.params.phone), JSON.stringify({ history: req.body.history || [], updatedAt: Date.now() })); res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
+// Append ONE message atomically — reads current thread, adds the message, writes back.
+// This replaces relying on the client to always send a complete, race-free history array:
+// two saves firing close together (question, then answer moments later) could otherwise
+// overwrite each other depending on timing, silently dropping one side of the exchange.
+app.post("/chat/:phone/append", (req, res) => {
+  try {
+    let cur = { history: [] };
+    try { cur = JSON.parse(fs.readFileSync(chatFile(req.params.phone), "utf8")); } catch {}
+    const history = Array.isArray(cur.history) ? cur.history : [];
+    history.push(req.body);
+    fs.writeFileSync(chatFile(req.params.phone), JSON.stringify({ history, updatedAt: Date.now() }));
+    res.json({ ok: true, history });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // Admin-only: aggregate view of every farmer's consultation activity
 app.get("/chats-all", (req, res) => {
   try {
