@@ -202,6 +202,69 @@ app.post("/chat/:phone/append", (req, res) => {
     res.json({ ok: true, history });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Kissan Hissab — per-farmer ledger (crops, input costs, sales, treatment notes).
+// Same proven pattern as chat: one file per phone, atomic append, never a client-side
+// full-overwrite that could race and lose entries. ──
+function ledgerFile(phone) {
+  const safe = String(phone || "unknown").replace(/\D/g, "") || "unknown";
+  return LEDGER_DIR + "/" + safe + ".json";
+}
+const LEDGER_DIR = (process.env.DATA_DIR || "/data") + "/ledger";
+try { fs.mkdirSync(LEDGER_DIR, { recursive: true }); } catch {}
+
+app.get("/ledger/:phone", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(ledgerFile(req.params.phone), "utf8"))); }
+  catch { res.json({ entries: [] }); }
+});
+app.post("/ledger/:phone/append", (req, res) => {
+  try {
+    let cur = { entries: [] };
+    try { cur = JSON.parse(fs.readFileSync(ledgerFile(req.params.phone), "utf8")); } catch {}
+    const entries = Array.isArray(cur.entries) ? cur.entries : [];
+    entries.push(req.body);
+    fs.writeFileSync(ledgerFile(req.params.phone), JSON.stringify({ entries, updatedAt: Date.now() }));
+    res.json({ ok: true, entries });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get("/ledger-all", (req, res) => {
+  // Admin cross-farmer view — for trend analysis and advisory, per the same aggregate
+  // pattern already used for /chats-all.
+  try {
+    const files = fs.readdirSync(LEDGER_DIR).filter(f => f.endsWith(".json"));
+    const out = {};
+    for (const f of files) {
+      try {
+        const d = JSON.parse(fs.readFileSync(LEDGER_DIR + "/" + f, "utf8"));
+        out[f.replace(/\.json$/, "")] = { entries: d.entries || [], updatedAt: d.updatedAt || 0 };
+      } catch {}
+    }
+    res.json(out);
+  } catch (e) { res.json({}); }
+});
+
+// ── Institutional crop rates — admin-curated current buying rates from named
+// institutional buyers (mills, exporters, etc.) per crop, shown read-only to farmers. ──
+const RATES_FILE = (process.env.DATA_DIR || "/data") + "/institutional_rates.json";
+app.get("/institutional-rates", (req, res) => {
+  try { res.json(JSON.parse(fs.readFileSync(RATES_FILE, "utf8"))); }
+  catch { res.json([]); }
+});
+app.post("/institutional-rates", (req, res) => {
+  try { fs.writeFileSync(RATES_FILE, JSON.stringify(req.body || [])); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post("/institutional-rates/add", (req, res) => {
+  try {
+    let arr = [];
+    try { arr = JSON.parse(fs.readFileSync(RATES_FILE, "utf8")); } catch {}
+    if (!Array.isArray(arr)) arr = [];
+    arr.push(req.body);
+    fs.writeFileSync(RATES_FILE, JSON.stringify(arr));
+    res.json({ ok: true, rates: arr });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Admin-only: aggregate view of every farmer's consultation activity
 app.get("/chats-all", (req, res) => {
   try {
