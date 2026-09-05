@@ -394,7 +394,6 @@ app.post("/reflib/add", (req, res) => {
 // ── Planet Labs daily-scene proxy (yesterday's imagery) ───────────────────────
 const PL_KEY = process.env.PLANET_API_KEY || "";
 const PL_AUTH = "Basic " + Buffer.from(PL_KEY + ":").toString("base64");
-
 // Find newest PlanetScope scene (last 14 days, <20% cloud) covering a point
 app.get("/planet/latest", async (req, res) => {
   try {
@@ -584,7 +583,6 @@ app.post("/central-suppliers/add", (req, res) => {
     res.json({ ok: true, suppliers: arr });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
 app.get("/central-orders", (req, res) => {
   try { res.json(JSON.parse(fs.readFileSync(CENTRAL_ORDERS_FILE, "utf8"))); }
   catch { res.json([]); }
@@ -603,8 +601,5 @@ app.post("/central-orders/add", (req, res) => {
     res.json({ ok: true, orders: arr });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-
-
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log("✅ Farmanza OTP backend running on http://localhost:" + PORT));
