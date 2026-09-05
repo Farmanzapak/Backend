@@ -451,6 +451,23 @@ app.get("/s2/tile/:z/:x/:y", async (req, res) => {
     res.send(Buffer.from(await r.arrayBuffer()));
   } catch(e){ console.log("s2 err:",e.message); res.status(500).end(); }
 });
+// ── ArcGIS World Imagery proxy — free, no API key. Used specifically for orchard
+// tree detection, which needs the browser to read raw pixel data via canvas
+// (not just display the image). Fetching directly from the browser risks a
+// "tainted canvas" security error if the tile server doesn't send permissive CORS
+// headers — routing through this backend guarantees canvas-safe access regardless,
+// the same fix already proven for Sentinel-2 tiles above. ──
+app.get("/arcgis/tile/:z/:y/:x", async (req, res) => {
+  try {
+    const { z, y, x } = req.params;
+    const url = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x;
+    const r = await fetch(url);
+    if (!r.ok) return res.status(r.status).end();
+    res.set({ "Content-Type": "image/jpeg", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=3600" });
+    res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) { console.log("arcgis err:", e.message); res.status(500).end(); }
+});
+
 
 // Proxy monthly-basemap tiles (fallback entitlement test)
 app.get("/planet/btile/:z/:x/:y", async (req, res) => {
